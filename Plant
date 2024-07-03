@@ -1,0 +1,683 @@
+local bot = getBot()
+local inventory = getBot():getInventory()
+local printed = getBot():getLog()
+
+for index, botname in pairs(getBots()) do
+    if bot.name:upper() == botname.name:upper() then
+        pcallBot = index
+    end
+end
+
+plantTile = 5
+bot.auto_reconnect = true
+bot.legit_mode = false
+bot.move_range = moveRange
+bot.move_interval = moveInterval
+bot.collect_range = 3
+strFormatted = 'no farm has been finished yet'
+initialize = {}
+onTile = {}
+local customizable = {
+    formatTime = os.time()
+}
+local sleeping = delayexecute * 1000
+
+for i = math.floor(plantTile/2), 1, -1 do
+    i = i * -1
+    table.insert(onTile, i)
+end
+
+for i = 0, math.ceil(plantTile/2) - 1 do
+    table.insert(onTile, i)
+end
+
+local events = {
+    nukeds = function(variant, netid)
+        if variant:get(0):getString() == 'OnConsoleMessage' then
+            if variant:get(1):getString():lower():find('inaccessible.') or variant:get(1):getString():lower():find('unknown reason.') then
+                nuked = true
+            end
+            unlistenEvents()
+        end
+    end
+}
+
+-- credit by Hitoari
+createMessage = function(webhookUrl)
+    local sendWebhook = string.format('powershell -Command "$webhookUrl=\'%s\';$originalMessageContent=\'%s\';$jsonPayload=@{content=$originalMessageContent} | ConvertTo-Json;$response=Invoke-RestMethod -Uri $webhookUrl -Method Post -Body $jsonPayload -ContentType \'application/json\';$response.id"', webhookUrl .. "?wait=true" , "Creating message id for bot - " .. bot.index)
+    local getMessageId = io.popen(sendWebhook):read('*a'):match('%s*(.-)%s*$')
+    local editCommand = string.format('powershell -Command "$editUrl=\'%s\';$editedMessageContent=\'%s\';$jsonPayload=@{content=$editedMessageContent} | ConvertTo-Json;$editResponse=Invoke-RestMethod -Uri $editUrl -Method Patch -Body $jsonPayload -ContentType \'application/json\';$editResponse.id"', string.format("%s/messages/%s", webhookUrl, getMessageId), getMessageId)
+    local editedMessageId = io.popen(editCommand):read('*a'):match('%s*(.-)%s*$')
+    return getMessageId
+end
+
+local messages = createMessage(linkbotinfo)
+
+tableFormatted = function(time)
+    if strFormatted == 'no farm has been finished yet' then
+        strFormatted = ''
+    end
+    strFormatted = strFormatted .. time .. '\n'
+end
+
+itemFloat = function(id)
+    return bot:getWorld().growscan:getObjects()[id] or 0
+end
+
+shuffle = function(tbl)
+    for i = #tbl, 2, -1 do
+        local j = math.random(i)
+        tbl[i], tbl[j] = tbl[j], tbl[i]
+    end
+    return tbl
+end
+
+seedNumeric = shuffle(storage)
+
+onBackpack = function()
+    return (splice and (inventory:getItemCount(seed) >= 15 and inventory:getItemCount(seedsplice) >= 15) or not splice and (inventory:getItemCount(seed) >= 15))
+end
+
+onSpray = function()
+    return (spray and (inventory:getItemCount(idSpray) >= 15) or not spray)
+end
+
+clientStatic = function()
+    local statusMap = {
+        [BotStatus.offline] = 'Offline', 
+        [BotStatus.account_banned] = 'Suspended', 
+        [BotStatus.location_banned] = 'Location Banned', 
+        [BotStatus.too_many_login] = 'Too Many Login', 
+        [BotStatus.maintenance] = 'Maintenance', 
+        [BotStatus.error_connecting] = 'Error Connecting', 
+        [BotStatus.http_block] = 'HTTP Block', 
+        [BotStatus.changing_subserver] = 'Changing Subserver', 
+        [BotStatus.mod_entered] = 'Mod Entered'
+    }
+    return (statusMap[bot.status] or 'Online')
+end
+
+split = function(str, ptr)
+    if not ptr then 
+        ptr = '%s'
+    end
+    local tbl = {}
+    for string in string.gmatch(str, ptr) do
+        table.insert(tbl, string) 
+    end
+    return tbl
+end
+
+notifications = function(text)
+    messageBox = MessageBox.new()
+    messageBox.title = 'Caramoy Syndicate'
+    messageBox.description = text
+    messageBox:send()
+end
+
+onTileWorld = function(case)
+    local tiles = {}
+    local botY = {2, 3}
+    if case == 'plant' then
+        for _, startY in ipairs(botY) do
+            for y = startY, 53, 6 do
+                if ((y // 6) % 2 == 0) then
+                    for x = 0, 99 do
+                        table.insert(tiles, { x = x, y = y, fg = getTile(x, y).fg })
+                    end
+                else
+                    for x = 99, 0, -1 do
+                        table.insert(tiles, { x = x, y = y, fg = getTile(x, y).fg })
+                    end
+                end
+            end
+        end
+    else
+        for y = 0, 53 do
+            if (y % 4 == 1) then
+                for x = 0, 99 do
+                    table.insert(tiles, { x = x, y = y, fg = getTile(x, y).fg })
+                end
+            else
+                for x = 99, 0, -1 do
+                    table.insert(tiles, { x = x, y = y, fg = getTile(x, y).fg })
+                end
+            end
+        end
+    end
+    return tiles
+end
+
+readFile = function(fileName)
+    local tbl = {}
+    local file = io.open(fileName, 'r')
+    if not file then
+        if sendNotif then
+            notifications('Fail to open world file.')
+        end
+        error('Fail to open file world file.')
+        return nil
+    else
+        for line in file:lines() do
+            table.insert(tbl, line)
+        end
+        file:close()
+        return tbl
+    end
+end
+
+local assignBot = readFile(worldFile)
+local indexBots = pcallBot - 1
+local ptr = #assignBot / #getBots()
+local start = math.floor(indexBots * ptr + 1)
+local stop = math.floor(indexBots + 1) * ptr
+
+textInfo = function(case, content)
+    printed:append(content)
+    clientContent('(' .. string.upper(bot.name) .. ') ' .. content)
+    if case == 'stop' then
+        if sendNotif then
+            notifications(string.upper(bot.name) .. ' : ' .. content)
+        end
+        error(content)
+    end
+end
+
+clientContent = function(text)
+    if webhookstatuslink ~= 'x'  then
+        local webhook = Webhook.new(webhookstatuslink)
+        if tagDiscord then
+            webhook.content = '@everyone'
+        end
+        webhook.embed1.use = true
+        webhook.embed1:addField('', text, false)
+        webhook.embed1.footer.text = 'Updated : ' .. (os.date('!%a %b %d, %Y at %I:%M %p', os.time() + 7 * 60 * 60)) .. ''
+        webhook:send()
+    end
+end
+
+countStatus = function(case)
+    local count = 0
+    for _, client in pairs(getBots()) do
+        if case == 'offline' then
+            if client.status ~= BotStatus.online then
+                count = count + 1
+            end
+        else
+            if client.status == BotStatus.account_banned then
+                count = count + 1
+            end
+        end
+    end
+    return count
+end
+
+localInfo = function(text)
+    local database = function()
+        local str = ''
+        for i = 1, #storage do
+            str = str .. '\n||' .. string.sub(split(storage[i], '[^|]+')[1], 1, 5) .. '|| : ' .. (initialize[split(storage[i], '[^|]+')[1]] or '?') .. ''
+        end
+        return str
+    end
+	if linkbotinfo ~= 'x' then
+        realtime = os.time() - customizable.formatTime
+        local webhook = Webhook.new(linkbotinfo)
+        webhook.embed1.use = true
+        webhook.embed2.use = true
+        webhook.content = 'Caramoy | Message Bot - ' .. bot.index
+        webhook.embed1.thumbnail = 'https://cdn.discordapp.com/attachments/1222249842387193876/1224708077262082068/Hnet.com-image.jpg?ex=661e7947&is=660c0447&hm=e692ab165629d6a84ca2661b5b4a75f97a23cfabb98983fda3270bc2be0e7474&'
+        webhook.embed1.color = math.random(111111, 999999)
+        webhook.embed1.title = 'BOT - ' .. bot.index .. ' | Lucifer Plant'
+        webhook.embed1:addField("Bot Task", text, false)
+        webhook.embed1:addField("Bot Name", '||' .. string.sub(bot.name, 1, 5) .. '||', true)
+        webhook.embed1:addField('Bot Current', '||' .. string.sub(getWorld().name, 1, 5) .. '||', true)
+        webhook.embed1:addField('Bot Status', clientStatic(), true)
+        webhook.embed1:addField('Bot Level', bot.level, true)
+        webhook.embed1:addField('Bot Age', bot:getAge() .. ' Days', true)
+        webhook.embed1:addField('Bot Uptime', math.floor(realtime/86400) .. ':' .. math.floor(realtime%86400/3600) .. ':' .. math.floor(realtime%86400%3600/60) .. '', true)
+        webhook.embed1:addField('Total Bots', #getBots(), true)
+        webhook.embed1:addField('Total Offline', countStatus('offline'), true)
+        webhook.embed1:addField('Total Banned', countStatus('banned'), true)
+        webhook.embed1:addField('Storage Seed', database(), false)
+        webhook.embed2:addField('Farm Estimates', strFormatted, true)
+        webhook.embed2.footer.icon_url = 'https://cdn.discordapp.com/attachments/1222249842387193876/1224708077706543236/1712025730898.jpg?ex=661e7947&is=660c0447&hm=3be9efe2f0f23456f272149dc0844db884cee12f3b21199b35b2c1287c77a8f2&'
+        webhook.embed2.footer.text = 'Updated : ' .. (os.date('!%a, %b %d %Y at %I:%M %p', os.time() + 7 * 60 * 60)) .. '.\nDeveloped By Caramoy and Made With Luv<3.'
+        if messages then
+            webhook:edit(messages)
+        end
+    end
+end
+
+activityDesc = function(text)
+    while bot:isInWorld() and bot.status == BotStatus.online do
+        bot:leaveWorld()
+        sleep(5000)
+    end
+    if removingbot then
+        removeBot()
+        sleep(2000)
+    end
+    textInfo('stop', text)
+end
+
+updateStatusInfo = function()
+    textInfo('', 'status is ' .. clientStatic() .. ', Current : ' .. getWorld().name .. '')
+    localInfo('Bot Status is ' .. clientStatic())
+end
+
+clientStatus = function()
+    if bot.status ~= BotStatus.online then
+        bot.auto_reconnect = false
+        updateStatusInfo()
+        while bot.status ~= BotStatus.online do
+            bot:connect()
+            sleep(delayreconnect * 1000)
+            if bot.status == BotStatus.account_banned then
+                textInfo('stop', 'status is ' .. clientStatic() .. '')
+            elseif bot.status == BotStatus.maintenance then
+                textInfo('', 'Server is maintenance, Sleeping for ' .. delaymaintenance .. ' minutes')
+                sleep(delaymaintenance * 60000)
+            end
+        end
+        updateStatusInfo()
+        bot.auto_reconnect = true
+    end
+end
+
+reconnect = function(world, id, x, y)
+    if bot.status ~= BotStatus.online then
+        clientStatus()
+    end
+    if not bot:isInWorld(world:upper()) then
+        addEvent(Event.variantlist, events.nukeds)
+        while not bot:isInWorld(world:upper()) and not nuked do
+            bot:warp(world:upper())
+            listenEvents(5)
+            sleep(delaywarp * 1000)
+        end
+        removeEvent(Event.variantlist)
+    end
+    if bot:isInWorld(world:upper()) and id ~= '' then
+        while getTile(bot.x, bot.y).fg == 6 do
+            bot:warp(world:upper(), id:upper())
+            sleep(delaywarp * 1000)
+        end
+    end
+    if getTile(bot.x, bot.y).fg == 6 and id ~= '' then
+        while getTile(bot.x, bot.y).fg == 6 do
+            bot:warp(world:upper(), id:upper())
+            sleep(delaywarp * 1000)
+        end
+    end
+    if x and y then
+        while bot.x ~= x or bot.y ~= y do
+            bot:findPath(x, y)
+            sleep(250)
+        end
+    end
+end
+
+warp = function(world, door)
+    name = world
+    if door ~= '' then
+        name = name .. '|'  .. door
+    end
+    if not bot:isInWorld(world:upper()) then
+        local count = 0
+        addEvent(Event.variantlist, events.nukeds)
+        while not bot:isInWorld(world:upper()) and not nuked do
+            bot:warp(name)
+            listenEvents(5)
+            sleep(delaywarp * 1000)
+            clientStatus()
+            count = count + 1
+            if count == 25 then
+                count = 0
+                textInfo('', ': Maybe hard warp?, disconnecting bot and sleeping for ' .. delayidiotserver .. ' minutes')
+                bot:disconnect()
+                sleep(delayidiotserver * 60000)
+            end
+        end
+        removeEvent(Event.variantlist)
+    end
+    if bot:isInWorld(world:upper()) and door ~= '' then
+        local stuck  = 0
+        while getTile(bot.x, bot.y).fg == 6 and not wrong do
+            bot:warp(name)
+            sleep(delaywarp * 1000)
+            clientStatus()
+            stuck = stuck + 1
+            if stuck == 5 then
+                wrong = true
+            end
+        end
+    end
+end
+
+isPlantable = function(x, y, case)
+    if case == 'plant' then
+        return getTile(x, y).fg == 0 and getInfo(getTile(x, y + 1).fg).collision_type ~= 0 and getTile(x, y + 1).fg ~= 0 and bot:getWorld():hasAccess(x, y) ~= 0 and not getTile(x, y):hasFlag(4096)
+    else
+        return getTile(x, y).fg == seed and not getTile(x, y):canHarvest()
+    end
+end
+
+botPlanting = function(x, y, tbl, case)
+    for _, num in pairs(onTile) do
+        if isPlantable(x + num, y + tbl, case) then
+            return true
+        end
+    end
+    return false
+end
+
+botPlant = function(w, d, case, item)
+    local directions = {-2, 0, 2}
+    for _, v in pairs(directions) do
+        count = 0
+        while botPlanting(bot.x, bot.y, v, case) and count < 30 do
+            for _, i in pairs(onTile) do
+                if isPlantable(bot.x + i, bot.y + v, case) then
+                    bot:place(bot.x + i, bot.y + v, item)
+                    sleep(delayplant)
+                    reconnect(w, d, bot.x, bot.y)
+                end
+            end
+            count = count + 1
+        end
+    end
+end
+
+botSpray = function(x, y, tbl)
+    for _, num in pairs(onTile) do        
+        if not getTile(x + num, y + tbl):canHarvest() then
+            return true
+        end
+    end
+    return false
+end
+
+botSpraying = function(w, d)
+    local directions = {-2, 0, 2}
+    for _, v in pairs(directions) do
+        while botSpray(bot.x, bot.y, v) do
+            for _, i in pairs(onTile) do
+                if not getTile(bot.x + i, bot.y + v):canHarvest() then
+                    bot:place(bot.x + i, bot.y + v, idSpray)
+                    sleep(delayplant)
+                    reconnect(w, d, bot.x, bot.y)
+                end
+            end
+        end
+    end
+end
+
+detectTree = function() 
+    local count = 0
+    for _, tile in pairs(bot:getWorld():getTiles()) do
+        if tile.fg % 2 == 1 then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+tileTbl = function()
+    for _, tile in pairs(onTileWorld()) do
+        if isPlantable(tile.x, tile.y, 'plant') then
+            return true
+        end
+    end
+    return false
+end
+
+onTake = function()
+    local function floatingCounts()
+        return not splice and itemFloat(seed) >= 15 or splice and itemFloat(seed) >= 15 and itemFloat(seedsplice) >= 15
+    end
+    ::back::
+    seedNumeric = shuffle(seedNumeric)
+    for i = #seedNumeric, 1, -1 do
+        parts = split(seedNumeric[i], '[^|]+')
+        world, door = parts[1], parts[2]
+        warp(world, door)
+        bot.auto_collect = true
+        if not nuked then
+            if not wrong then
+                printed:append('Take Items')
+                localInfo('Take Items')
+                if spray then
+                    ::spray::
+                    if itemFloat(idSpray) >= 15 then
+                        for _, obj in pairs(bot:getWorld():getObjects()) do
+                            if obj.id == idSpray and #bot:getPath(math.floor((obj.x + 10) / 32), math.floor((obj.y + 10) / 32)) > 0 then
+                                bot:findPath(math.floor((obj.x + 10) / 32), math.floor((obj.y + 10) / 32))
+                                sleep(100)
+                                reconnect(world, door, math.floor((obj.x + 10) / 32), math.floor((obj.y + 10) / 32))
+                            end
+                            if inventory:getItemCount(idSpray) >= 15 then 
+                                break 
+                            end
+                        end
+                    else
+                        textInfo('', 'No more spray, please drop!, Bot sleeping for 30 seconds')
+                        sleep(30000)
+                        goto spray
+                    end
+                end
+                if not floatingCounts() then
+                    initialize[world] = itemFloat(seed) .. '/' .. itemFloat(seedsplice)
+                    if not looping then
+                        textInfo('', 'Storage Seed : ' .. world .. ' has empty, skipped world')
+                        table.remove(seedNumeric, i)
+                        if #seedNumeric == 0 then
+                            activityDesc('All storage has empty, terminated script')
+                        end
+                    else
+                        sleep(delaylooping * 1000)
+                        goto back
+                    end
+                else
+                    for _, obj in pairs(bot:getWorld():getObjects()) do
+                        if obj.id == seed and #bot:getPath(math.floor((obj.x + 10) / 32), math.floor((obj.y + 10) / 32)) > 0 then
+                            bot:findPath(math.floor((obj.x + 10) / 32), math.floor((obj.y + 10) / 32))
+                            sleep(100)
+                            reconnect(world, door, math.floor((obj.x + 10) / 32), math.floor((obj.y + 10) / 32))
+                        end
+                        if inventory:getItemCount(seed) >= 15 then 
+                            break 
+                        end
+                    end
+                    if splice then
+                        for _, obj in pairs(bot:getWorld():getObjects()) do
+                            if obj.id == seedsplice and #bot:getPath(math.floor((obj.x + 10) / 32), math.floor((obj.y + 10) / 32)) > 0 then
+                                bot:findPath(math.floor((obj.x + 10) / 32), math.floor((obj.y + 10) / 32))
+                                sleep(100)
+                                reconnect(world, door, math.floor((obj.x + 10) / 32), math.floor((obj.y + 10) / 32))
+                            end
+                            if inventory:getItemCount(seedsplice) >= 15 then 
+                                break 
+                            end
+                        end
+                    end
+                    sleep(100)
+                    break
+                end
+            else
+                initialize[world] = 'Wrong door'
+                wrong = false
+                textInfo('', 'Storage seed : ' .. world .. ' is wrong door id, skipped world')
+                table.remove(seedNumeric, i)
+                if #seedNumeric == 0 then
+                    activityDesc('All storage has empty, terminated script')
+                end
+            end
+        else
+            initialize[world] = 'Nuked'
+            nuked = false
+            textInfo('', 'Storage seed : ' .. world .. ' is Nuked, skipped world')
+            table.remove(seedNumeric, i)
+            if #seedNumeric == 0 then
+                activityDesc('All storage has empty, terminated script')
+            end
+        end
+    end
+    bot.auto_collect = false
+    initialize[world] = itemFloat(seed) .. '/' .. itemFloat(seedsplice)
+end
+
+plant = function(world, id)
+    printed:append('Planting')
+    for _, tile in pairs(onTileWorld('plant')) do
+        if isPlantable(tile.x, tile.y, 'plant') then
+            bot:findPath(tile.x, tile.y)
+            sleep(100)
+            reconnect(world, id, tile.x, tile.y)
+            if ((tile.y // 6) % 2 == 0) then
+                if (tile.x + 2) > 96 then
+                    bot:findPath(96, tile.y)
+                    sleep(100)
+                    reconnect(world, id, 96, tile.y)
+                else
+                    bot:findPath(tile.x + 2, tile.y)
+                    sleep(100)
+                    reconnect(world, id, tile.x + 2, tile.y)
+                end
+            else
+                if (tile.x - 2) < 3 then
+                    bot:findPath(3, tile.y)
+                    sleep(100)
+                    reconnect(world, id, 3, tile.y)
+                else
+                    bot:findPath(tile.x - 2, tile.y)
+                    sleep(100)
+                    reconnect(world, id, tile.x - 2, tile.y)
+                end
+            end
+            botPlant(world, id, 'plant', seed)
+            if splice then
+                botPlant(world, id, 'splice', seedsplice)
+            end
+            if spray then
+                botSpraying(world, id)
+            end
+        end
+        if not onBackpack() or not onSpray() then
+            onTake()
+            printed:append('Planting')
+            warp(world, id)
+            localInfo('Planting')
+        end
+    end
+end
+
+rechecking = function(world, id)
+    printed:append('Rechecking')
+    for _, tile in pairs(onTileWorld('recheck')) do
+        if isPlantable(tile.x, tile.y, 'plant') then
+            bot:findPath(tile.x, tile.y)
+            sleep(100)
+            reconnect(world, id, tile.x, tile.y)
+            while isPlantable(tile.x, tile.y, 'plant') do
+                bot:place(tile.x, tile.y, seed)
+                sleep(delayplant)
+                reconnect(world, id, tile.x, tile.y)
+            end
+            if splice then
+                while isPlantable(tile.x, tile.y, 'splice') do
+                    bot:place(tile.x, tile.y, seedsplice)
+                    sleep(delayplant)
+                    reconnect(world, id, tile.x, tile.y)
+                end
+            end
+            if spray then
+                while not getTile(tile.x, tile.y):canHarvest() do
+                    bot:place(tile.x, tile.y, idSpray)
+                    sleep(delayplant)
+                    reconnect(world, id, tile.x, tile.y)
+                end
+            end
+        end
+        if not onBackpack() or not onSpray() then
+            onTake()
+            printed:append(case)
+            warp(world, id)
+            localInfo(case)
+        end
+    end
+end
+
+writeFile = function(txt)
+    local uniqueLines = {}
+    local file = io.open('WorldInformation.txt', "r")
+    if file then
+        for line in file:lines() do
+            uniqueLines[line] = true
+        end
+        file:close()
+    end
+    if not uniqueLines[txt] then
+        uniqueLines[txt] = true
+        file = io.open('WorldInformation.txt', "a")
+        if file then
+            file:write(txt .. "\n")
+            file:close()
+        else
+            txtInfo("Error, Cannot open file " .. filePath)
+        end
+    end
+end
+
+saveFile = function(worlds, str)
+    writeFile(worlds .. ' : is ' .. str)
+    tableFormatted(string.sub(worlds, 1, 3) .. ' | ' .. str)
+    textInfo('', worlds ..  ' : is ' .. str .. ', skipped world')
+end
+
+runningScript = function(world, door)
+    localInfo('Planting')
+    local startTime = os.time()
+    plant(world, door)
+    while tileTbl() do
+        rechecking(world, door)
+    end
+    local elapsedTime = os.time() - startTime
+    local timeStr = string.sub(world, 1, 3) .. ' | ' .. math.floor(elapsedTime / 60) .. ' Mins'
+    tableFormatted(timeStr .. ' | ' .. detectTree())
+end
+
+processWorld = function(world, door)
+    warp(world, door)
+    if not nuked then
+        if not wrong then
+            runningScript(world, door)
+        else
+            wrong = false
+            saveFile(world, 'Wrong door')
+        end
+    else
+        nuked = false
+        saveFile(world, 'Nuked')
+    end
+end
+
+if Information == 'Script Plant made by Caramoy Syndicate, Link Discord : https://discord.com/invite/fTTKW8vvuq' and scriptVersion == 'final_version[0.1]' then
+    clientStatus()
+    sleep(pcallBot * sleeping)
+    ::back::
+    if onBackpack() then
+        localInfo('Planting')
+        for i = start, stop do
+            local parts = split(assignBot[i], '[^|]+')
+            processWorld(parts[1], parts[2])
+        end
+        localInfo('Finished all world, terminated script!')
+        activityDesc('Finished all world, terminated script!')
+    else
+        onTake()
+        goto back
+    end
+else
+    textInfo('stop', 'Script Plant made by Caramoy Syndicate, Link Discord : https://discord.com/invite/fTTKW8vvuq, Reseller IDIOT !!')
+end

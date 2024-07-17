@@ -1,4 +1,3 @@
-
 local bot = getBot()
 local inventory = getBot():getInventory()
 local printed = getBot():getLog()
@@ -18,9 +17,11 @@ bot.collect_range = 3
 strFormatted = 'no farm has been finished yet'
 initialize = {}
 onTile = {}
+
 local customizable = {
     formatTime = os.time()
 }
+
 local sleeping = delayexecute * 1000
 local msg = {}
 
@@ -445,7 +446,7 @@ end
 botPlant = function(w, d, case, item)
     local directions = {-2, 0, 2}
     for _, v in pairs(directions) do
-        count = 0
+        local count = 0
         while botPlanting(bot.x, bot.y, v, case) and count < 30 do
             for _, i in pairs(onTile) do
                 if isPlantable(bot.x + i, bot.y + v, case) then
@@ -648,24 +649,30 @@ rechecking = function(world, id)
         if isPlantable(tile.x, tile.y, 'plant') then
             bot:findPath(tile.x, tile.y)
             sleep(100)
+            local plantCheck = 0
+            local spliceCheck = 0
+            local sprayCheck = 0
             reconnect(world, id, tile.x, tile.y)
-            while isPlantable(tile.x, tile.y, 'plant') do
+            while isPlantable(tile.x, tile.y, 'plant') and plantCheck < 30 do
                 bot:place(tile.x, tile.y, seed)
                 sleep(delayplant)
                 reconnect(world, id, tile.x, tile.y)
+                plantCheck = plantCheck + 1
             end
             if splice then
-                while isPlantable(tile.x, tile.y, 'splice') do
+                while isPlantable(tile.x, tile.y, 'splice') and spliceCheck < 30 do
                     bot:place(tile.x, tile.y, seedsplice)
                     sleep(delayplant)
                     reconnect(world, id, tile.x, tile.y)
+                    spliceCheck = spliceCheck + 1
                 end
             end
             if spray then
-                while not getTile(tile.x, tile.y):canHarvest() do
+                while not getTile(tile.x, tile.y):canHarvest() and sprayCheck < 30 do
                     bot:place(tile.x, tile.y, idSpray)
                     sleep(delayplant)
                     reconnect(world, id, tile.x, tile.y)
+                    sprayCheck = sprayCheck + 1
                 end
             end
         end
@@ -688,8 +695,10 @@ runningScript = function(world, door)
     localInfo('Planting')
     local startTime = os.time()
     plant(world, door)
-    while tileTbl() do
+    local count = 0
+    while tileTbl() and count < 30 do
         rechecking(world, door)
+        count = count + 1
     end
     local elapsedTime = os.time() - startTime
     local timeStr = string.sub(world, 1, 3) .. ' | ' .. math.floor(elapsedTime / 60) .. ' Mins'

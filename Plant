@@ -1,13 +1,8 @@
 local bot = getBot()
-local inventory = getBot():getInventory()
-local printed = getBot():getLog()
 
-for index, botname in pairs(getBots()) do
-    if bot.name:upper() == botname.name:upper() then
-        pcallBot = index
-    end
-end
-
+inventory = bot:getInventory()
+printed = bot:getLog()
+pcallBot = bot.index
 plantTile = 5
 bot.auto_reconnect = true
 bot.legit_mode = false
@@ -237,11 +232,11 @@ if fileExists(fileName) then
     deleteFile(fileName)
 end
 
-local assignBot = readFile(worldFile)
-local indexBots = pcallBot - 1
-local ptr = #assignBot / #getBots()
-local start = math.floor(indexBots * ptr + 1)
-local stop = math.floor(indexBots + 1) * ptr
+assignBot = readFile(worldFile)
+indexBots = pcallBot - 1
+ptr = #assignBot / #getBots()
+start = math.floor(indexBots * ptr + 1)
+stop = math.floor(indexBots + 1) * ptr
 
 textInfo = function(case, content)
     printed:append(content)
@@ -367,7 +362,7 @@ reconnect = function(world, id, x, y)
             listenEvents(5)
             sleep(delaywarp * 1000)
         end
-        removeEvent(Event.variantlist)
+        removeEvents()
     end
     if bot:isInWorld(world:upper()) and id ~= '' then
         while getTile(bot.x, bot.y).fg == 6 do
@@ -395,22 +390,14 @@ warp = function(world, door)
         name = name .. '|'  .. door
     end
     if not bot:isInWorld(world:upper()) then
-        local count = 0
         addEvent(Event.variantlist, events.nukeds)
         while not bot:isInWorld(world:upper()) and not nuked do
             bot:warp(name)
             listenEvents(5)
             sleep(delaywarp * 1000)
             clientStatus()
-            count = count + 1
-            if count == 25 then
-                count = 0
-                textInfo('', ': Maybe hard warp?, disconnecting bot and sleeping for ' .. delayidiotserver .. ' minutes')
-                bot:disconnect()
-                sleep(delayidiotserver * 60000)
-            end
         end
-        removeEvent(Event.variantlist)
+        removeEvents()
     end
     if bot:isInWorld(world:upper()) and door ~= '' then
         local stuck  = 0

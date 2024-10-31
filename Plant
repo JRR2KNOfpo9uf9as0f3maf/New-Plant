@@ -1,3 +1,4 @@
+
 local bot = getBot()
 
 inventory = bot:getInventory()
@@ -430,16 +431,16 @@ botPlanting = function(x, y, tbl, case)
     return false
 end
 
-botPlant = function(w, d, case, item)
+botPlant = function(w, d, x, y, case, item)
     local directions = {-2, 0, 2}
     for _, v in pairs(directions) do
         local count = 0
-        while botPlanting(bot.x, bot.y, v, case) and count < 30 do
+        while botPlanting(x, y, v, case) and count < 30 do
             for _, i in pairs(onTile) do
-                if isPlantable(bot.x + i, bot.y + v, case) then
-                    bot:place(bot.x + i, bot.y + v, item)
+                if isPlantable(x + i, y + v, case) then
+                    bot:place(x + i, y + v, item)
                     sleep(delayplant)
-                    reconnect(w, d, bot.x, bot.y)
+                    reconnect(w, d, x, y)
                 end
             end
             count = count + 1
@@ -456,15 +457,15 @@ botSpray = function(x, y, tbl)
     return false
 end
 
-botSpraying = function(w, d)
+botSpraying = function(w, d, x, y)
     local directions = {-2, 0, 2}
     for _, v in pairs(directions) do
-        while botSpray(bot.x, bot.y, v) do
+        while botSpray(x, y, v) do
             for _, i in pairs(onTile) do
-                if not getTile(bot.x + i, bot.y + v):canHarvest() then
-                    bot:place(bot.x + i, bot.y + v, idSpray)
+                if not getTile(x + i, y + v):canHarvest() then
+                    bot:place(x + i, y + v, idSpray)
                     sleep(delayplant)
-                    reconnect(w, d, bot.x, bot.y)
+                    reconnect(w, d, x, y)
                 end
             end
         end
@@ -589,36 +590,65 @@ plant = function(world, id)
     printed:append('Planting')
     for _, tile in pairs(onTileWorld('plant')) do
         if isPlantable(tile.x, tile.y, 'plant') then
-            bot:findPath(tile.x, tile.y)
-            sleep(100)
-            reconnect(world, id, tile.x, tile.y)
+            local count = 0
+            while not bot:isInTile(tile.x, tile.y) do
+                bot:findPath(tile.x, tile.y)
+                sleep(100)
+                reconnect(world, id, tile.x, tile.y)
+                count = count + 1
+                if count >= 25 then
+                    bot:disconnect()
+                    sleep(5000)
+                    reconnect(world, id, tile.x, tile.y)
+                end
+            end
             if ((tile.y // 6) % 2 == 0) then
                 if (tile.x + 2) > 96 then
                     bot:findPath(96, tile.y)
                     sleep(100)
                     reconnect(world, id, 96, tile.y)
+                    botPlant(world, id, 96, tile.y, 'plant', seed)
+                    if splice then
+                        botPlant(world, id, 96, tile.y, 'splice', seed)
+                    end
+                    if spray then
+                        botSpraying(world, id, 96, tile.y)
+                    end
                 else
                     bot:findPath(tile.x + 2, tile.y)
                     sleep(100)
                     reconnect(world, id, tile.x + 2, tile.y)
+                    botPlant(world, id, tile.x + 2, tile.y, 'plant', seed)
+                    if splice then
+                        botPlant(world, id, tile.x + 2, tile.y, 'splice', seed)
+                    end
+                    if spray then
+                        botSpraying(world, id, tile.x + 2, tile.y)
+                    end
                 end
             else
                 if (tile.x - 2) < 3 then
                     bot:findPath(3, tile.y)
                     sleep(100)
                     reconnect(world, id, 3, tile.y)
+                    botPlant(world, id, 3, tile.y, 'plant', seed)
+                    if splice then
+                        botPlant(world, id, 3, tile.y, 'splice', seed)
+                    end
+                    if spray then
+                        botSpraying(world, id, 3, tile.y)
+                    end
                 else
                     bot:findPath(tile.x - 2, tile.y)
                     sleep(100)
-                    reconnect(world, id, tile.x - 2, tile.y)
+                    botPlant(world, id, tile.x -2, tile.y, 'plant', seed)
+                    if splice then
+                        botPlant(world, id, tile.x - 2, tile.y, 'splice', seed)
+                    end
+                    if spray then
+                        botSpraying(world, id, tile.x - 2, tile.y)
+                    end
                 end
-            end
-            botPlant(world, id, 'plant', seed)
-            if splice then
-                botPlant(world, id, 'splice', seedsplice)
-            end
-            if spray then
-                botSpraying(world, id)
             end
         end
         if not onBackpack() or not onSpray() then
